@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mailgoat"
+version = "1.0.0b1"
+description = "Python SDK for MailGoat"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+  { name = "MailGoat AI" }
+]
+keywords = ["mailgoat", "email", "postal", "sdk"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Email",
+  "Topic :: Software Development :: Libraries :: Python Modules"
+]
+dependencies = [
+  "httpx>=0.27.0,<1.0"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0.0",
+  "respx>=0.21.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/mailgoatai/mailgoat-python"
+Repository = "https://github.com/mailgoatai/mailgoat-python"
+Issues = "https://github.com/mailgoatai/mailgoat-python/issues"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mailgoat"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/mailgoat/py.typed" = "mailgoat/py.typed"
