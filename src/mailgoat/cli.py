@@ -5,9 +5,20 @@ import json
 import os
 import sys
 
-from .batch import BatchStore, load_recipients, load_template, send_batch
+from .batch import BatchStore, load_recipients, load_template as load_batch_template, send_batch
 from .client import MailGoat
 from .profiles import MailProfile, ProfileError, ProfileStore, prompt_for_profile
+from .templates import (
+    Template,
+    TemplateError,
+    create_template,
+    list_templates,
+    load_template,
+    parse_vars,
+    render_template,
+    render_text,
+    validate_template,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +40,18 @@ def build_parser() -> argparse.ArgumentParser:
     send_batch_parser.add_argument("--error-log")
     send_batch_parser.add_argument("--db-path", default="~/.mailgoat/batches.db")
 
+    send_parser = sub.add_parser("send", help="Send one message using template")
+    send_parser.add_argument("--server")
+    send_parser.add_argument("--api-key")
+    send_parser.add_argument("--from-address")
+    send_parser.add_argument("--from-name")
+    send_parser.add_argument("--profile")
+    send_parser.add_argument("--to", required=True)
+    send_parser.add_argument("--template", required=True, dest="template_name")
+    send_parser.add_argument("--template-dir")
+    send_parser.add_argument("--var", action="append", default=[])
+    send_parser.add_argument("--vars")
+
     batch_parser = sub.add_parser("batch", help="Batch operations")
     batch_sub = batch_parser.add_subparsers(dest="batch_command", required=True)
     batch_status = batch_sub.add_parser("status", help="Show status for one batch")
@@ -47,6 +70,28 @@ def build_parser() -> argparse.ArgumentParser:
     profile_use = profile_sub.add_parser("use", help="Switch default profile")
     profile_use.add_argument("name")
 
+    template_parser = sub.add_parser("template", help="Manage templates")
+    template_parser.add_argument("--template-dir")
+    template_sub = template_parser.add_subparsers(dest="template_command", required=True)
+
+    template_sub.add_parser("list", help="List templates")
+
+    template_show = template_sub.add_parser("show", help="Show template contents")
+    template_show.add_argument("name")
+
+    template_create = template_sub.add_parser("create", help="Create a template interactively")
+    template_create.add_argument("name")
+
+    template_validate = template_sub.add_parser("validate", help="Validate a template")
+    template_validate.add_argument("name")
+    template_validate.add_argument("--var", action="append", default=[])
+    template_validate.add_argument("--vars")
+
+    template_preview = template_sub.add_parser("preview", help="Render template preview")
+    template_preview.add_argument("name")
+    template_preview.add_argument("--var", action="append", default=[])
+    template_preview.add_argument("--vars")
+
     return parser
 
 
@@ -57,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "send-batch":
         stdin_data = sys.stdin.read() if args.use_stdin else None
         recipients = load_recipients(csv_path=args.csv_path, json_path=args.json_path, stdin_data=stdin_data)
-        template = load_template(args.template_path)
+        template = load_batch_template(args.template_path)
 
         profile = _resolve_profile(
             profile_name=args.profile,
@@ -92,6 +137,36 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
         )
+        return 0
+
+    if args.command == "send":
+        try:
+            variables = parse_vars(args.var, args.vars)
+            template = load_template(args.template_name, args.template_dir)
+            body, warnings = render_template(template, variables)
+            subject = render_text(str(template.metadata.get("subject", "")), variables)
+            meta_from = template.metadata.get("from")
+        except TemplateError as exc:
+            print(json.dumps({"error": str(exc)}))
+            return 1
+
+        profile = _resolve_profile(
+            profile_name=args.profile,
+            server=args.server,
+            api_key=args.api_key,
+            from_address=args.from_address,
+            from_name=args.from_name,
+        )
+
+        with MailGoat(server=profile.server, api_key=profile.api_key) as client:
+            message_id = client.send(
+                to=args.to,
+                subject=subject,
+                body=body,
+                from_address=args.from_address or profile.from_address or meta_from,
+            )
+
+        print(json.dumps({"message_id": message_id, "warnings": warnings}))
         return 0
 
     if args.command == "batch" and args.batch_command == "status":
@@ -154,6 +229,59 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             print(json.dumps({"status": "ok", "default_profile": args.name}))
             return 0
+
+    if args.command == "template":
+        try:
+            if args.template_command == "list":
+                print(json.dumps({"templates": list_templates(args.template_dir)}))
+                return 0
+
+            if args.template_command == "show":
+                template = load_template(args.name, args.template_dir)
+                print(
+                    json.dumps(
+                        {
+                            "name": template.name,
+                            "metadata": template.metadata,
+                            "body": template.body,
+                            "path": str(template.path),
+                        }
+                    )
+                )
+                return 0
+
+            if args.template_command == "create":
+                subject = input("Subject: ").strip()
+                from_address = input("From address: ").strip()
+                print("Body (end with a single line containing only EOF):")
+                lines: list[str] = []
+                while True:
+                    line = input()
+                    if line == "EOF":
+                        break
+                    lines.append(line)
+                target = create_template(args.name, subject, from_address, "\n".join(lines), args.template_dir)
+                print(json.dumps({"status": "ok", "path": str(target)}))
+                return 0
+
+            if args.template_command == "validate":
+                template = load_template(args.name, args.template_dir)
+                vars_map = parse_vars(args.var, args.vars)
+                errors = validate_template(template, vars_map)
+                print(json.dumps({"name": template.name, "valid": len(errors) == 0, "issues": errors}))
+                return 0 if len(errors) == 0 else 1
+
+            if args.template_command == "preview":
+                template = load_template(args.name, args.template_dir)
+                vars_map = parse_vars(args.var, args.vars)
+                subject = render_text(str(template.metadata.get("subject", "")), vars_map)
+                body, warnings = render_template(template, vars_map)
+                print(json.dumps({"subject": subject, "body": body, "warnings": warnings}))
+                return 0
+
+        except TemplateError as exc:
+            print(json.dumps({"error": str(exc)}))
+            return 1
 
     return 1
 

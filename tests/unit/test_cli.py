@@ -160,3 +160,88 @@ def test_send_batch_profile_flag_overrides_env(monkeypatch, tmp_path: Path, caps
     assert code == 0
     assert seen["server"] == "https://postal.home"
     assert seen["api_key"] == "k2"
+
+
+def test_template_list_and_preview(tmp_path: Path, capsys) -> None:
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir(parents=True)
+    (template_dir / "welcome.hbs").write_text(
+        "---\nsubject: Hi {{name}}\nfrom: noreply@example.com\n---\nHello {{name}}\n",
+        encoding="utf-8",
+    )
+
+    list_code = main(["template", "--template-dir", str(template_dir), "list"])
+    list_output = json.loads(capsys.readouterr().out.strip())
+    assert list_code == 0
+    assert "welcome" in list_output["templates"]
+
+    preview_code = main(
+        [
+            "template",
+            "--template-dir",
+            str(template_dir),
+            "preview",
+            "welcome",
+            "--var",
+            "name=Ada",
+        ]
+    )
+    preview_output = json.loads(capsys.readouterr().out.strip())
+    assert preview_code == 0
+    assert preview_output["subject"] == "Hi Ada"
+    assert "Hello Ada" in preview_output["body"]
+
+
+def test_send_with_template(monkeypatch, tmp_path: Path, capsys) -> None:
+    template_dir = tmp_path / "templates"
+    template_dir.mkdir(parents=True)
+    (template_dir / "welcome.hbs").write_text(
+        "---\nsubject: Hi {{name}}\nfrom: noreply@example.com\n---\nHello {{name}}\n",
+        encoding="utf-8",
+    )
+
+    sent: dict[str, str | None] = {}
+
+    class FakeMailGoat:
+        def __init__(self, server: str, api_key: str) -> None:
+            sent["server"] = server
+            sent["api_key"] = api_key
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def send(self, to: str, subject: str, body: str, from_address: str | None = None, attachments=None) -> str:
+            sent["to"] = to
+            sent["subject"] = subject
+            sent["body"] = body
+            sent["from_address"] = from_address
+            return "msg_abc"
+
+    monkeypatch.setattr("mailgoat.cli.MailGoat", FakeMailGoat)
+
+    code = main(
+        [
+            "send",
+            "--server",
+            "https://postal.example.com",
+            "--api-key",
+            "test-key",
+            "--template",
+            "welcome",
+            "--template-dir",
+            str(template_dir),
+            "--to",
+            "user@example.com",
+            "--var",
+            "name=Alice",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out.strip())
+
+    assert code == 0
+    assert output["message_id"] == "msg_abc"
+    assert sent["subject"] == "Hi Alice"
+    assert sent["body"] == "Hello Alice\n"

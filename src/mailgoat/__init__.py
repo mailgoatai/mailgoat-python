@@ -2,6 +2,7 @@ from .client import MailGoat, MailGoatAPIError, MailGoatError, MailGoatNetworkEr
 from .models import Message
 from .batch import BatchError, BatchSummary
 from .profiles import MailProfile, ProfileError
+from .templates import TemplateError
 
 __all__ = [
     "MailGoat",
@@ -13,4 +14,5 @@ __all__ = [
     "BatchSummary",
     "MailProfile",
     "ProfileError",
+    "TemplateError",
 ]

@@ -173,6 +173,49 @@ Each profile stores:
 - `from_address`
 - `from_name`
 
+## Template System
+
+Templates are stored in `~/.mailgoat/templates` by default (or override with `--template-dir`).
+
+Commands:
+
+```bash
+mailgoat template list
+mailgoat template show welcome
+mailgoat template create custom_welcome
+mailgoat template validate welcome --var name=Alice --var appName=MailGoat
+mailgoat template preview welcome --vars ./vars.json
+```
+
+Send with template:
+
+```bash
+mailgoat send \
+  --profile work \
+  --template welcome \
+  --to user@example.com \
+  --var name=\"Alice\" \
+  --var appName=\"MailGoat\" \
+  --var isPro=true
+```
+
+Template format (`.hbs`) supports:
+
+- `{{variable}}`
+- `{{#if flag}}...{{else}}...{{/if}}`
+- `{{#each rows}}...{{/each}}`
+
+Frontmatter metadata:
+
+```handlebars
+---
+subject: Welcome to {{appName}}!
+from: noreply@example.com
+---
+Hi {{name}},
+{{#if isPro}}Thanks for being Pro!{{else}}Upgrade to Pro any time.{{/if}}
+```
+
 ## Testing
 
 Run unit tests:
