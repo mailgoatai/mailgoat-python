@@ -1,9 +1,9 @@
 # mailgoat-python (Beta)
 
-`mailgoat` is the official Python SDK for the MailGoat API.
-
 [![CI](https://github.com/mailgoatai/mailgoat-python/actions/workflows/ci.yml/badge.svg)](https://github.com/mailgoatai/mailgoat-python/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/mailgoatai/mailgoat-python/branch/main/graph/badge.svg)](https://codecov.io/gh/mailgoatai/mailgoat-python)
+
+`mailgoat` is the official Python SDK for the MailGoat API.
 
 ## Installation
 
