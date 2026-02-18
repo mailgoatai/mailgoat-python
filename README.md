@@ -78,8 +78,7 @@ Send many messages from CSV:
 
 ```bash
 mailgoat send-batch \
-  --server "https://postal.example.com" \
-  --api-key "your-api-key" \
+  --profile work \
   --csv ./recipients.csv \
   --template ./template.json \
   --continue-on-error \
@@ -90,8 +89,7 @@ Send from JSON array:
 
 ```bash
 mailgoat send-batch \
-  --server "https://postal.example.com" \
-  --api-key "your-api-key" \
+  --profile work \
   --json ./recipients.json
 ```
 
@@ -99,8 +97,7 @@ Send from stdin:
 
 ```bash
 cat recipients.json | mailgoat send-batch \
-  --server "https://postal.example.com" \
-  --api-key "your-api-key" \
+  --profile work \
   --stdin
 ```
 
@@ -138,6 +135,43 @@ Template file is JSON:
 ```
 
 Variables like `{{name}}` and `{{code}}` come from each CSV/JSON row.
+
+## Profiles (Aliases / Multi-Account)
+
+Configure named profiles for multiple sender identities/accounts:
+
+```bash
+mailgoat profile add work
+mailgoat profile add personal
+mailgoat profile list
+mailgoat profile use work
+```
+
+Use default profile:
+
+```bash
+mailgoat send-batch --json recipients.json
+```
+
+Override for one command:
+
+```bash
+mailgoat send-batch --profile personal --json recipients.json
+```
+
+Environment variable override:
+
+```bash
+export MAILGOAT_PROFILE=personal
+mailgoat send-batch --json recipients.json
+```
+
+Each profile stores:
+
+- `server`
+- `api_key`
+- `from_address`
+- `from_name`
 
 ## Testing
 

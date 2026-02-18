@@ -219,6 +219,7 @@ def send_batch(
     rate_limit: float | None = None,
     error_log_path: str | Path | None = None,
     db_path: str | Path = "~/.mailgoat/batches.db",
+    default_from_address: str | None = None,
 ) -> BatchSummary:
     batch_id = uuid4().hex
     store = BatchStore(db_path=db_path)
@@ -246,7 +247,7 @@ def send_batch(
                     to=payload["to"],
                     subject=payload["subject"],
                     body=payload["body"],
-                    from_address=payload["from_address"],
+                    from_address=payload["from_address"] or default_from_address,
                 )
                 sent += 1
             except Exception as exc:  # noqa: BLE001

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
-from pathlib import Path
 
 from .batch import BatchStore, load_recipients, load_template, send_batch
 from .client import MailGoat
+from .profiles import MailProfile, ProfileError, ProfileStore, prompt_for_profile
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -14,8 +15,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     send_batch_parser = sub.add_parser("send-batch", help="Send a batch of emails")
-    send_batch_parser.add_argument("--server", required=True)
-    send_batch_parser.add_argument("--api-key", required=True)
+    send_batch_parser.add_argument("--server")
+    send_batch_parser.add_argument("--api-key")
+    send_batch_parser.add_argument("--from-address")
+    send_batch_parser.add_argument("--from-name")
+    send_batch_parser.add_argument("--profile")
     send_batch_parser.add_argument("--csv", dest="csv_path")
     send_batch_parser.add_argument("--json", dest="json_path")
     send_batch_parser.add_argument("--stdin", action="store_true", dest="use_stdin")
@@ -31,6 +35,18 @@ def build_parser() -> argparse.ArgumentParser:
     batch_status.add_argument("batch_id")
     batch_status.add_argument("--db-path", default="~/.mailgoat/batches.db")
 
+    profile_parser = sub.add_parser("profile", help="Manage email profiles")
+    profile_parser.add_argument("--config-path", default="~/.mailgoat/profiles.json")
+    profile_sub = profile_parser.add_subparsers(dest="profile_command", required=True)
+
+    profile_add = profile_sub.add_parser("add", help="Add a new profile")
+    profile_add.add_argument("name")
+
+    profile_sub.add_parser("list", help="List configured profiles")
+
+    profile_use = profile_sub.add_parser("use", help="Switch default profile")
+    profile_use.add_argument("name")
+
     return parser
 
 
@@ -43,7 +59,15 @@ def main(argv: list[str] | None = None) -> int:
         recipients = load_recipients(csv_path=args.csv_path, json_path=args.json_path, stdin_data=stdin_data)
         template = load_template(args.template_path)
 
-        with MailGoat(server=args.server, api_key=args.api_key) as client:
+        profile = _resolve_profile(
+            profile_name=args.profile,
+            server=args.server,
+            api_key=args.api_key,
+            from_address=args.from_address,
+            from_name=args.from_name,
+        )
+
+        with MailGoat(server=profile.server, api_key=profile.api_key) as client:
             summary = send_batch(
                 client=client,
                 recipients=recipients,
@@ -52,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
                 rate_limit=args.rate_limit,
                 error_log_path=args.error_log,
                 db_path=args.db_path,
+                default_from_address=profile.from_address,
             )
 
         print(
@@ -97,7 +122,71 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "profile":
+        store = ProfileStore(config_path=args.config_path)
+
+        if args.profile_command == "add":
+            profile = prompt_for_profile(args.name)
+            store.add_profile(profile)
+            print(json.dumps({"status": "ok", "profile": profile.name}))
+            return 0
+
+        if args.profile_command == "list":
+            default_name = store.get_default_profile_name()
+            profiles = [
+                {
+                    "name": profile.name,
+                    "server": profile.server,
+                    "from_address": profile.from_address,
+                    "from_name": profile.from_name,
+                    "default": profile.name == default_name,
+                }
+                for profile in store.list_profiles()
+            ]
+            print(json.dumps({"profiles": profiles, "default_profile": default_name}))
+            return 0
+
+        if args.profile_command == "use":
+            try:
+                store.set_default(args.name)
+            except ProfileError as exc:
+                print(json.dumps({"error": str(exc)}))
+                return 1
+            print(json.dumps({"status": "ok", "default_profile": args.name}))
+            return 0
+
     return 1
+
+
+def _resolve_profile(
+    profile_name: str | None,
+    server: str | None,
+    api_key: str | None,
+    from_address: str | None,
+    from_name: str | None,
+) -> MailProfile:
+    if server and api_key:
+        return MailProfile(
+            name="inline",
+            server=server,
+            api_key=api_key,
+            from_address=from_address,
+            from_name=from_name,
+        )
+
+    store = ProfileStore()
+    target = profile_name or os.getenv("MAILGOAT_PROFILE") or store.get_default_profile_name()
+    if not target:
+        raise SystemExit(
+            "missing credentials: provide --server/--api-key or configure a profile and set default"
+        )
+
+    profile = store.get_profile(target)
+    if from_address:
+        profile.from_address = from_address
+    if from_name:
+        profile.from_name = from_name
+    return profile
 
 
 if __name__ == "__main__":
