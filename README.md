@@ -72,6 +72,73 @@ except MailGoatNetworkError as err:
 - `send(to, subject, body, from_address=None, attachments=None) -> str`
 - `read(message_id) -> Message`
 
+## Batch Sending
+
+Send many messages from CSV:
+
+```bash
+mailgoat send-batch \
+  --server "https://postal.example.com" \
+  --api-key "your-api-key" \
+  --csv ./recipients.csv \
+  --template ./template.json \
+  --continue-on-error \
+  --rate-limit 5
+```
+
+Send from JSON array:
+
+```bash
+mailgoat send-batch \
+  --server "https://postal.example.com" \
+  --api-key "your-api-key" \
+  --json ./recipients.json
+```
+
+Send from stdin:
+
+```bash
+cat recipients.json | mailgoat send-batch \
+  --server "https://postal.example.com" \
+  --api-key "your-api-key" \
+  --stdin
+```
+
+Check batch status:
+
+```bash
+mailgoat batch status <batch_id>
+```
+
+### CSV Format
+
+Required columns:
+
+- `to`
+- `subject` and `body` (unless `--template` is used)
+
+Example:
+
+```csv
+to,subject,body,name
+user1@example.com,Welcome,Hello user1,Ada
+user2@example.com,Welcome,Hello user2,Lin
+```
+
+### Template Syntax
+
+Template file is JSON:
+
+```json
+{
+  "subject": "Hello {{name}}",
+  "body": "Your code is {{code}}",
+  "from": "noreply@example.com"
+}
+```
+
+Variables like `{{name}}` and `{{code}}` come from each CSV/JSON row.
+
 ## Testing
 
 Run unit tests:

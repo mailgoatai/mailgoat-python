@@ -42,6 +42,9 @@ Homepage = "https://github.com/mailgoatai/mailgoat-python"
 Repository = "https://github.com/mailgoatai/mailgoat-python"
 Issues = "https://github.com/mailgoatai/mailgoat-python/issues"
 
+[project.scripts]
+mailgoat = "mailgoat.cli:main"
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-ra"
