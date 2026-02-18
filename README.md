@@ -86,6 +86,18 @@ export MAILGOAT_TEST_TO="recipient@example.com"
 pytest tests/integration -m integration
 ```
 
+## Development Workflow
+
+Push directly to `main` after local verification.
+
+Required before every push:
+
+```bash
+make test
+make build
+make check-dist
+```
+
 Run full release readiness checks:
 
 ```bash
