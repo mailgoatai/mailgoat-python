@@ -35,7 +35,7 @@ class MailGoat:
             base_url=self._server,
             timeout=timeout,
             headers={
-                "Authorization": f"Bearer {self._api_key}",
+                "X-Server-API-Key": self._api_key,
                 "Accept": "application/json",
                 "User-Agent": "mailgoat-python/1.0.0b1",
             },
@@ -53,13 +53,13 @@ class MailGoat:
         payload: dict[str, Any] = {
             "to": [to] if isinstance(to, str) else to,
             "subject": subject,
-            "body": body,
+            "plain_body": body,
         }
         if from_address:
             payload["from"] = from_address
 
         try:
-            response = self._client.post("/api/v1/messages/send", data=payload, files=files or None)
+            response = self._client.post("/api/v1/send/message", data=payload, files=files or None)
         except httpx.HTTPError as exc:
             raise MailGoatNetworkError(str(exc)) from exc
         finally:
@@ -67,7 +67,22 @@ class MailGoat:
                 handle.close()
 
         data = self._parse_response(response)
-        message_id = data.get("message_id") or data.get("id")
+        nested_data = data.get("data")
+        if not isinstance(nested_data, dict):
+            nested_data = {}
+        nested_message = nested_data.get("message")
+        if not isinstance(nested_message, dict):
+            nested_message = {}
+        root_message = data.get("message")
+        if not isinstance(root_message, dict):
+            root_message = {}
+
+        message_id = (
+            data.get("message_id")
+            or data.get("id")
+            or nested_message.get("id")
+            or root_message.get("id")
+        )
         if not message_id:
             raise MailGoatAPIError(response.status_code, "missing message_id in API response", data)
         return str(message_id)
@@ -105,6 +120,15 @@ class MailGoat:
 
         if not isinstance(data, dict):
             raise MailGoatAPIError(response.status_code, "invalid JSON response from API", data)
+
+        # Postal can return 200 with {"status":"error","data":{"message":"..."}}
+        if str(data.get("status", "")).lower() == "error":
+            nested = data.get("data")
+            if isinstance(nested, dict):
+                message = str(nested.get("message") or data.get("message") or "unknown API error")
+            else:
+                message = str(data.get("message") or "unknown API error")
+            raise MailGoatAPIError(response.status_code, message, data)
         return data
 
     def _build_attachments(
